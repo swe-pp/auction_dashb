@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PP Premier League – Singer Auction</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 16px; background:#fff; color:#111; }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  h2 { font-size: 16px; margin: 18px 0 6px; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+  .box { border:1px solid #999; padding:12px; border-radius:4px; }
+  .big { font-size: 22px; font-weight:bold; }
+  .mid { font-size: 16px; }
+  .holder { background:#ffe97a; }
+  table { border-collapse: collapse; }
+  th, td { border:1px solid #999; padding:4px 8px; text-align:left; font-size:14px; }
+  th { background:#eee; }
+  button { font-size:14px; padding:5px 12px; margin:4px 4px 4px 0; cursor:pointer; }
+  #nextBtn { font-weight:bold; }
+  
+  select, input { font-size:14px; padding:4px; }
+  #msg { color:#b30000; font-weight:bold; min-height:20px; }
+  .slot { padding:8px; border:1px solid #999; min-width:200px; }
+  .small { font-size:12px; color:#555; }
+  textarea { width:100%; font-family:monospace; }
+</style>
+</head>
+<body>
+<h1>PP Premier League – Singer Auction</h1>
+
+<div class="row">
+  <!-- LEFT: controls + live -->
+  <div style="flex:1; min-width:340px;">
+  <div class="box">
+    <div>
+      Singer: <input id="singerName" placeholder="Singer name" size="18">
+      Category: <select id="singerCat"><option>A</option><option>B</option><option selected>C</option></select>
+      <span class="small" id="baseInfo"></span>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <div class="slot" id="slot0box">Team 1<br><select id="slot0"></select></div>
+      <div class="slot" id="slot1box">Team 2<br><select id="slot1"></select></div>
+    </div>
+
+    <div style="margin-top:14px;">
+      <div class="mid" id="liveSinger">—</div>
+      <div style="display:flex; justify-content:space-between; gap:16px; margin-top:6px; font-size:16px;">
+        <div><span id="priceLabel">Current bid</span>: <b id="livePrice">—</b></div>
+        <div>Held by: <b id="liveHolder">—</b></div>
+        <div id="nextLine">Next bid: <b id="liveNext">—</b></div>
+      </div>
+    </div>
+
+    <div id="msg"></div>
+    <button id="nextBtn">Start bid</button>
+    <button id="undoBtn">Undo</button>
+    <button id="soldBtn">Sold</button>
+    <button id="unsoldBtn">Unsold</button>
+
+    <h2>Bid history (this singer)</h2>
+    <table id="bidTable"><thead><tr><th>#</th><th>Price (₹)</th><th>Team 1</th><th>Team 2</th><th>Category</th></tr></thead><tbody></tbody></table>
+  </div>
+
+<h2>Team summary</h2>
+<table id="teamTable"><thead><tr><th>Team</th><th>A</th><th>B</th><th>C</th><th>Total singers</th><th>Spent</th><th>Purse left</th></tr></thead><tbody></tbody></table>
+
+<h2>Sold log</h2>
+<table id="soldTable"><thead><tr><th>#</th><th>Singer</th><th>Cat</th><th>Team</th><th>Price (₹)</th></tr></thead><tbody></tbody></table>
+<p><button id="resetAll">Reset everything</button></p>
+  </div>
+
+  <!-- RIGHT: price ladder -->
+  <div class="box">
+    <h2 style="margin-top:0">Price ladder</h2>
+    <table id="ladder"><thead><tr><th>Price (₹)</th><th>Step</th></tr></thead><tbody></tbody></table>
+  </div>
+</div>
+
+
+
+<script>
+const BASE = { A: 40000, B: 26000, C: 15000 };
+
+function step(p) {
+  if (p < 20000) return 1000;
+  if (p < 30000) return 2000;
+  if (p < 60000) return 5000;
+  if (p < 110000) return 10000;
+  if (p < 210000) return 20000;
+  if (p < 360000) return 30000;
+  if (p < 560000) return 40000;
+  return 50000;
+}
+const nextPrice = p => p + step(p);
+const fmt = n => n == null ? '—' : '₹' + n.toLocaleString('en-IN');
+
+let S = {
+  teams: ['🔴 ROB','⚫ TCK','🟤 KGF','🟠 MSD','🟢 DRP','🟣 MVP','🟡 LSK','🔵 AIR'],
+  defaultPurse: 1536000, purses: {},
+  singer: '', cat: 'C',
+  slots: ['', ''], price: null, holder: null, bids: [],
+  sold: [], queue: []
+};
+let history = [];
+
+function save() { try { localStorage.setItem('ppl_auction_v2', JSON.stringify(S)); } catch (e) {} }
+function load() { try { const d = localStorage.getItem('ppl_auction_v2'); if (d) S = Object.assign(S, JSON.parse(d)); } catch (e) {} }
+function snap() { history.push(JSON.stringify(S)); if (history.length > 200) history.shift(); }
+function purseOf(t) { return S.purses[t] != null ? S.purses[t] : S.defaultPurse; }
+function spent(t) { return S.sold.filter(s => s.team === t).reduce((a, s) => a + s.price, 0); }
+function left(t) { return purseOf(t) - spent(t); }
+function msg(t) { document.getElementById('msg').textContent = t || ''; }
+const $ = id => document.getElementById(id);
+
+function fillSelect(sel, val, other) {
+  sel.innerHTML = '<option value="">— select —</option>' +
+    S.teams.map(t => `<option ${t === val ? 'selected' : ''} ${t === other ? 'disabled' : ''}>${t}</option>`).join('');
+}
+
+function render() {
+  $('singerName').value = S.singer;
+  $('singerCat').value = S.cat;
+  $('baseInfo').textContent = 'Base: ' + fmt(BASE[S.cat]);
+  const live = S.price != null;
+  $('singerName').disabled = live; $('singerCat').disabled = live;
+
+  fillSelect($('slot0'), S.slots[0], S.slots[1]);
+  fillSelect($('slot1'), S.slots[1], S.slots[0]);
+  // holding team's slot is locked while bidding
+  $('slot0').disabled = live && S.holder === 0;
+  $('slot1').disabled = live && S.holder === 1;
+  $('slot0box').className = 'slot' + (live && S.holder === 0 ? ' holder' : '');
+  $('slot1box').className = 'slot' + (live && S.holder === 1 ? ' holder' : '');
+
+  $('liveSinger').textContent = S.singer ? `${S.singer} (Category ${S.cat})` : '—';
+  $('priceLabel').textContent = live ? 'Current bid' : 'Base price';
+  $('livePrice').textContent = live ? fmt(S.price) : fmt(BASE[S.cat]);
+  $('liveHolder').textContent = live ? S.slots[S.holder] : '—';
+  $('liveNext').textContent = live ? fmt(nextPrice(S.price)) : '';
+  $('nextLine').style.visibility = live ? '' : 'hidden';
+  $('nextBtn').textContent = live ? 'Next' : 'Start bid';
+
+  // bid history
+  $('bidTable').querySelector('tbody').innerHTML = S.bids.map((b, i) =>
+    `<tr class="${i === S.bids.length - 1 ? 'holder' : ''}"><td>${i + 1}</td><td>${b.price.toLocaleString('en-IN')}</td>
+     <td>${b.slot === 0 ? b.team : ''}</td><td>${b.slot === 1 ? b.team : ''}</td><td>${S.cat}</td></tr>`).join('');
+
+  // ladder from base up to a bit beyond current
+  let p = BASE[S.cat], rows = '', limit = Math.max((S.price || 0) * 1.6, 200000), n = 0;
+  while (p <= limit && n < 40) {
+    rows += `<tr class="${p === S.price ? 'holder' : ''}"><td>${p.toLocaleString('en-IN')}</td><td>+${step(p).toLocaleString('en-IN')}</td></tr>`;
+    p = nextPrice(p); n++;
+  }
+  $('ladder').querySelector('tbody').innerHTML = rows;
+
+  // team summary
+  $('teamTable').querySelector('tbody').innerHTML = S.teams.map(t => {
+    const mine = S.sold.filter(s => s.team === t);
+    const c = k => mine.filter(s => s.cat === k).length;
+    return `<tr><td>${t}</td><td>${c('A')}</td><td>${c('B')}</td><td>${c('C')}</td><td>${mine.length}</td><td>${spent(t).toLocaleString('en-IN')}</td><td><b>${left(t).toLocaleString('en-IN')}</b></td></tr>`;
+  }).join('');
+
+  // sold log (latest first)
+  $('soldTable').querySelector('tbody').innerHTML = S.sold.map((s, i) =>
+    `<tr><td>${i + 1}</td><td>${s.singer}</td><td>${s.cat}</td><td>${s.team || 'UNSOLD'}</td><td>${s.team ? s.price.toLocaleString('en-IN') : '—'}</td></tr>`
+  ).reverse().join('');
+
+  save();
+}
+
+function doNext() {
+  msg('');
+  if (S.price == null) {
+    if (!S.singer.trim()) return msg('Enter the singer name first.');
+    if (!S.slots[0]) return msg('Pick the team opening the bid in Team 1.');
+    if (BASE[S.cat] > left(S.slots[0])) return msg(S.slots[0] + ' does not have enough purse left for this bid.');
+    snap();
+    S.price = BASE[S.cat]; S.holder = 0;
+    S.bids = [{ price: S.price, team: S.slots[0], slot: 0 }];
+  } else {
+    const other = 1 - S.holder;
+    if (!S.slots[other]) return msg('Pick the challenging team in Team ' + (other + 1) + '.');
+    if (S.slots[other] === S.slots[S.holder]) return msg('Both slots have the same team.');
+    if (nextPrice(S.price) > left(S.slots[other])) return msg(S.slots[other] + ' does not have enough purse left for ' + fmt(nextPrice(S.price)) + '.');
+    snap();
+    S.price = nextPrice(S.price); S.holder = other;
+    S.bids.push({ price: S.price, team: S.slots[other], slot: other });
+  }
+  render();
+}
+
+function loadNextSinger() {
+  S.price = null; S.holder = null; S.bids = []; S.slots = ['', ''];
+  if (S.queue.length) { const q = S.queue.shift(); S.singer = q.name; S.cat = q.cat; }
+  else { S.singer = ''; }
+}
+
+function doSold() {
+  msg('');
+  if (S.price == null) return msg('No bid yet.');
+  snap();
+  S.sold.push({ singer: S.singer, cat: S.cat, team: S.slots[S.holder], price: S.price });
+  loadNextSinger(); render();
+}
+function doUnsold() {
+  msg('');
+  if (!S.singer.trim()) return msg('No singer on the block.');
+  snap();
+  S.sold.push({ singer: S.singer, cat: S.cat, team: '', price: 0 });
+  loadNextSinger(); render();
+}
+function doUndo() {
+  msg('');
+  if (!history.length) return msg('Nothing to undo.');
+  S = JSON.parse(history.pop()); render();
+}
+
+$('nextBtn').onclick = doNext;
+$('soldBtn').onclick = doSold;
+$('unsoldBtn').onclick = doUnsold;
+$('undoBtn').onclick = doUndo;
+$('singerName').oninput = e => { S.singer = e.target.value; save(); $('liveSinger').textContent = S.singer ? `${S.singer} (Category ${S.cat})` : '—'; };
+$('singerCat').onchange = e => { S.cat = e.target.value; render(); };
+$('slot0').onchange = e => { snap(); S.slots[0] = e.target.value; render(); };
+$('slot1').onchange = e => { snap(); S.slots[1] = e.target.value; render(); };
+
+$('resetAll').onclick = () => {
+  if (!$('resetAll').dataset.confirm) { $('resetAll').dataset.confirm = '1'; $('resetAll').textContent = 'Click again to confirm reset'; return; }
+  try { localStorage.removeItem('ppl_auction_v2'); } catch (e) {}
+  location.reload();
+};
+document.addEventListener('keydown', e => {
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+  if (e.key === 'n' || e.key === 'N' || e.key === ' ') { e.preventDefault(); doNext(); }
+  if (e.key === 'u' || e.key === 'U') doUndo();
+});
+
+load(); render();
+</script>
+</body>
+</html>
