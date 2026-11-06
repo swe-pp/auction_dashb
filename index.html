@@ -72,7 +72,7 @@
   </div>
 
   <!-- RIGHT: price ladder -->
-  <div class="box">
+  <div class="box" style="max-height:85vh; overflow-y:auto;">
     <h2 style="margin-top:0">Price ladder</h2>
     <table id="ladder"><thead><tr><th>Price (₹)</th><th>Step</th></tr></thead><tbody></tbody></table>
   </div>
@@ -147,13 +147,15 @@ function render() {
     `<tr class="${i === S.bids.length - 1 ? 'holder' : ''}"><td>${i + 1}</td><td>${b.price.toLocaleString('en-IN')}</td>
      <td>${b.slot === 0 ? b.team : ''}</td><td>${b.slot === 1 ? b.team : ''}</td><td>${S.cat}</td></tr>`).join('');
 
-  // ladder from base up to a bit beyond current
-  let p = BASE[S.cat], rows = '', limit = Math.max((S.price || 0) * 1.6, 200000), n = 0;
-  while (p <= limit && n < 40) {
+  // ladder: every valid price from the base price up to the largest team purse
+  let p = BASE[S.cat], rows = '', limit = Math.max(...S.teams.map(purseOf));
+  while (p <= limit) {
     rows += `<tr class="${p === S.price ? 'holder' : ''}"><td>${p.toLocaleString('en-IN')}</td><td>+${step(p).toLocaleString('en-IN')}</td></tr>`;
-    p = nextPrice(p); n++;
+    p = nextPrice(p);
   }
   $('ladder').querySelector('tbody').innerHTML = rows;
+  const cur = $('ladder').querySelector('tr.holder');
+  if (cur) cur.scrollIntoView({ block: 'nearest' });
 
   // team summary
   $('teamTable').querySelector('tbody').innerHTML = S.teams.map(t => {
