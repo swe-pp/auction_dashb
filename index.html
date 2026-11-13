@@ -106,7 +106,7 @@
   <div class="card full">
     <h2>Sold log</h2>
     <div class="tablewrap"><table id="soldTable"><thead><tr><th>#</th><th>Singer</th><th>ID</th><th>Category</th><th>Country</th><th class="num">Base (₹)</th><th>Team</th><th class="num">Price (₹)</th></tr></thead><tbody></tbody></table></div>
-    <p><button id="reloadSheet">Reload from Google Sheet</button> <span class="small" id="sheetInfo"></span></p>
+    <p><button id="reloadSheet">Reload from Google Sheet</button> <button id="resetAuction" style="border-color:#b91c1c;color:#b91c1c;">Reset auction</button> <span class="small" id="sheetInfo"></span></p>
   </div>
 </div>
 
@@ -382,6 +382,20 @@ $('singerName').onchange = e => { const p = findPlayer(e.target.value); if (p) {
 $('slot0').onchange = e => { snap(); S.slots[0] = e.target.value; render(); };
 $('slot1').onchange = e => { snap(); S.slots[1] = e.target.value; render(); };
 
+$('resetAuction').onclick = async () => {
+  if (S.price != null) return msg('Finish the current bid (Sold / Unsold) first.');
+  const typed = prompt('This deletes ALL auction results from the Google Sheet, for everyone, and resets the live page.\n\nType RESET to confirm.');
+  if (typed !== 'RESET') return msg('Reset cancelled.');
+  msg('Resetting…');
+  try {
+    const res = await fetch(syncUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'reset' }) });
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error || 'sheet error');
+  } catch (e) { return msg('Reset failed — could not reach the Google Sheet. Nothing was changed.'); }
+  outbox = []; saveOutbox(); history = [];
+  try { localStorage.removeItem(KEY); } catch (e) {}
+  location.reload();
+};
 $('reloadSheet').onclick = () => { if (S.price != null) return msg('Finish the current bid (Sold / Unsold) first.'); loadFromSheet(true); };
 document.addEventListener('keydown', e => {
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
