@@ -106,7 +106,7 @@
   <div class="card full">
     <h2>Sold log</h2>
     <div class="tablewrap"><table id="soldTable"><thead><tr><th>#</th><th>Singer</th><th>ID</th><th>Category</th><th>Country</th><th class="num">Base (₹)</th><th>Team</th><th class="num">Price (₹)</th></tr></thead><tbody></tbody></table></div>
-    <p><button id="resetAll">Reset everything</button></p>
+    <p><button id="reloadSheet">Reload from Google Sheet</button> <span class="small" id="sheetInfo"></span></p>
   </div>
 </div>
 
@@ -312,6 +312,7 @@ function render() {
   }).reverse().join('');
 
   save();
+  pushLive();
 }
 
 function doNext() {
@@ -381,11 +382,7 @@ $('singerName').onchange = e => { const p = findPlayer(e.target.value); if (p) {
 $('slot0').onchange = e => { snap(); S.slots[0] = e.target.value; render(); };
 $('slot1').onchange = e => { snap(); S.slots[1] = e.target.value; render(); };
 
-$('resetAll').onclick = () => {
-  if (!$('resetAll').dataset.confirm) { $('resetAll').dataset.confirm = '1'; $('resetAll').textContent = 'Click again to confirm reset'; return; }
-  try { localStorage.removeItem(KEY); } catch (e) {}
-  location.reload();
-};
+$('reloadSheet').onclick = () => { if (S.price != null) return msg('Finish the current bid (Sold / Unsold) first.'); loadFromSheet(true); };
 document.addEventListener('keydown', e => {
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
   if (e.key === 'n' || e.key === 'N' || e.key === ' ') { e.preventDefault(); doNext(); }
@@ -437,6 +434,8 @@ async function pushLive() {
   if (liveDirty) { liveDirty = false; setTimeout(pushLive, 100); }   // a newer click happened while sending
 }
 
+setInterval(() => { if (JSON.stringify(liveState()) !== liveSent) pushLive(); }, 5000);
+
 function queue(item) { outbox.push(item); saveOutbox(); flush(); }
 function syncStatus() { if (lastErr) console.warn('Sheet sync pending:', outbox.length, lastErr); }
 async function flush() {
@@ -456,10 +455,49 @@ async function flush() {
 }
 setInterval(flush, 15000);
 
+// ---------- Google Sheet is the source of truth for sold / unsold ----------
+function parseBids(arr) {
+  return (arr || []).map(x => {
+    if (typeof x === 'object') return x;
+    const m = String(x).match(/^([A-Z]+)\s*[–-]\s*([\d,]+)/);
+    return m ? { team: m[1], price: Number(m[2].replace(/,/g, '')) } : null;
+  }).filter(Boolean);
+}
+function fromRow(r) {
+  const sold = r.status === 'SOLD';
+  return { id: r.id, time: r.time, singer: r.player, cat: playerByName[r.player].cat,
+    team: sold ? r.team : '', price: sold ? Number(String(r.price).replace(/,/g, '')) : 0, bids: parseBids(r.bids) };
+}
+const soldKey = arr => arr.map(x => x.id + '|' + x.team + '|' + x.price).join(';');
+let sheetLoading = false;
+async function loadFromSheet(force) {
+  if (sheetLoading || (!force && S.price != null)) return;
+  sheetLoading = true;
+  try {
+    const res = await fetch(syncUrl() + '?state&t=' + Date.now(), { cache: 'no-store' });
+    const j = await res.json();
+    if (!j.ok || !Array.isArray(j.rows)) throw new Error(j.error || 'bad reply');
+    if (!force && S.price != null) return;          // a bid started while we were loading
+    let sold = j.rows.filter(r => playerByName[r.player]).map(fromRow);
+    const ids = new Set(sold.map(x => x.id));
+    outbox.forEach(o => {                            // include changes not yet saved to the sheet
+      if (o.action === 'add' && !ids.has(o.rec.id) && playerByName[o.rec.player]) { sold.push(fromRow(o.rec)); ids.add(o.rec.id); }
+      if (o.action === 'delete') sold = sold.filter(x => x.id !== o.id);
+    });
+    if (force || soldKey(sold) !== soldKey(S.sold)) {
+      S.sold = sold; history = []; render();
+    }
+    $('sheetInfo').textContent = 'Last loaded from sheet ' + new Date().toLocaleTimeString('en-IN');
+  } catch (e) {
+    $('sheetInfo').textContent = 'Could not reach the Google Sheet — showing what this browser has.';
+  } finally { sheetLoading = false; }
+}
+setInterval(() => loadFromSheet(false), 15000);
+
 load();
 if (S.singer && !playerByName[S.singer]) S.singer = '';
 if (!S.typed && S.singer) S.typed = S.singer;
-render(); flush();
+render(); flush(); loadFromSheet(false);
 </script>
 </body>
 </html>
