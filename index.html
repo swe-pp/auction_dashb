@@ -108,18 +108,6 @@
     <div class="tablewrap"><table id="soldTable"><thead><tr><th>#</th><th>Singer</th><th>Category</th><th>Country</th><th class="num">Base (₹)</th><th>Team</th><th class="num">Price (₹)</th></tr></thead><tbody></tbody></table></div>
     <p><button id="resetAll">Reset everything</button></p>
   </div>
-
-  <!-- Google Sheet sync -->
-  <div class="card full">
-    <h2>Google Sheet log</h2>
-    <label for="syncUrl">Apps Script web app URL</label>
-    <div style="display:flex; gap:8px;">
-      <input id="syncUrl" placeholder="https://script.google.com/macros/s/…/exec">
-      <button id="syncSave">Save</button>
-      <button id="syncResend" title="Sends every sold/unsold entry again; rows already in the sheet are skipped">Resend all</button>
-    </div>
-    <div id="syncStatus" style="margin-top:8px; font-weight:bold;"></div>
-  </div>
 </div>
 
 <script>
@@ -398,7 +386,8 @@ const SYNC_KEY = 'ppl_sync_url', OUTBOX_KEY = 'ppl_outbox';
 let outbox = []; try { outbox = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]'); } catch (e) {}
 let flushing = false, lastErr = '';
 function saveOutbox() { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox)); } catch (e) {} }
-function syncUrl() { try { return localStorage.getItem(SYNC_KEY) || ''; } catch (e) { return ''; } }
+const DEFAULT_SYNC_URL = 'https://script.google.com/macros/s/AKfycbyUO2pfXfY5aMkEQkxvJKol6Wc-2B3a6p5oyqYZ6Au0Ce1WohY0f2iQE5k-DYsawmJS/exec';
+function syncUrl() { return DEFAULT_SYNC_URL; }
 function recOf(e) {
   const pl = playerByName[e.singer] || {}, t = teamByCode[e.team];
   return { id: e.id, time: e.time, player: e.singer, category: CAT_LABEL[e.cat], country: pl.country || '', base: pl.base || '',
@@ -406,13 +395,7 @@ function recOf(e) {
     price: e.team ? e.price : '', bids: e.bids || [] };
 }
 function queue(item) { outbox.push(item); saveOutbox(); flush(); }
-function syncStatus() {
-  const el = $('syncStatus');
-  if (!syncUrl()) { el.style.color = '#b30000'; el.textContent = 'Not connected — paste the Apps Script URL and click Save.' + (outbox.length ? ` (${outbox.length} waiting)` : ''); return; }
-  if (!outbox.length) { el.style.color = '#15803d'; el.textContent = 'Google Sheet: all synced ✓'; return; }
-  el.style.color = '#b45309';
-  el.textContent = `Google Sheet: ${outbox.length} waiting to send` + (lastErr ? ` — last error: ${lastErr} (retrying every 15s)` : '…');
-}
+function syncStatus() { if (lastErr) console.warn('Sheet sync pending:', outbox.length, lastErr); }
 async function flush() {
   const url = syncUrl();
   if (!url || flushing || !outbox.length) return syncStatus();
@@ -429,9 +412,6 @@ async function flush() {
   flushing = false; syncStatus();
 }
 setInterval(flush, 15000);
-$('syncUrl').value = syncUrl();
-$('syncSave').onclick = () => { try { localStorage.setItem(SYNC_KEY, $('syncUrl').value.trim()); } catch (e) {} lastErr = ''; flush(); };
-$('syncResend').onclick = () => { S.sold.filter(x => x.id).forEach(x => outbox.push({ action: 'add', rec: recOf(x) })); saveOutbox(); flush(); };
 
 load();
 if (S.singer && !playerByName[S.singer]) S.singer = '';
