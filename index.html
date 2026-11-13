@@ -98,8 +98,8 @@
   <!-- Team summary -->
   <div class="card full">
     <h2>Team summary</h2>
-    <div class="tablewrap"><table id="teamTable" style="width:auto; min-width:60%;"><thead><tr><th>Team</th><th>Captain</th><th class="num">Offline</th><th class="num">Online</th><th class="num">Bought</th><th class="num">Total purse (₹)</th><th class="num">Spent (₹)</th><th class="num">Remaining (₹)</th></tr></thead><tbody></tbody></table></div>
-    <div class="small" style="margin-top:6px;">Remaining = Total purse − Spent.</div>
+    <div class="tablewrap"><table id="teamTable" style="width:auto; min-width:60%;"><thead><tr><th>Team</th><th>Captain</th><th class="num">Offline (max 6)</th><th class="num">Online (max 4)</th><th class="num">Bought (excl. captain)</th><th class="num">Total purse (₹)</th><th class="num">Spent (₹)</th><th class="num">Remaining (₹)</th></tr></thead><tbody></tbody></table></div>
+    <div class="small" style="margin-top:6px;">Offline/Online counts include the captain. Remaining = Total purse − Spent.</div>
   </div>
 
   <!-- Sold log -->
@@ -113,6 +113,7 @@
 <script>
 const TOTAL_PURSE = 1323000;
 const CAT_LABEL = { A: 'Offline', B: 'Online' };
+const LIMIT = { A: 6, B: 4 };   // max players each team can buy per category
 
 // code, full name, captain, captain value  → auction purse = TOTAL_PURSE - captain value
 const TEAMS = [
@@ -125,7 +126,7 @@ const TEAMS = [
   { code: 'SPB', name: 'Singapore Power Beats',      captain: 'Avyukth',          capValue: 174000 },
   { code: 'TMS', name: 'Tune Masters of Saligramam', captain: 'Karthik Shankara', capValue: 178000 },
 ];
-TEAMS.forEach(t => t.purse = TOTAL_PURSE - t.capValue);
+TEAMS.forEach(t => { t.purse = TOTAL_PURSE - t.capValue; t.capCat = t.code === 'LRE' ? 'B' : 'A'; });  // captains count toward limits; Lee Chandran is Online, rest Offline
 const teamByCode = Object.fromEntries(TEAMS.map(t => [t.code, t]));
 
 // Auction pool (captains removed). [name, country, Offline/Online, base price]
@@ -236,9 +237,16 @@ const isSold = n => S.sold.some(s => s.singer === n && s.team);
 const wasUnsold = n => S.sold.some(s => s.singer === n && !s.team);
 const findPlayer = txt => { const t = txt.trim().toLowerCase(); return PLAYERS.find(p => p.name.toLowerCase() === t); };
 
+function catCount(c, cat) { return S.sold.filter(s => s.team === c && s.cat === cat).length + (teamByCode[c].capCat === cat ? 1 : 0); }
+function isFull(c, cat) { return catCount(c, cat) >= LIMIT[cat]; }
+
 function fillTeamSelect(sel, val, other) {
+  const p = cur();
   sel.innerHTML = '<option value="">— select team —</option>' +
-    TEAMS.map(t => `<option value="${t.code}" ${t.code === val ? 'selected' : ''} ${t.code === other ? 'disabled' : ''}>${t.code} – ${t.name}</option>`).join('');
+    TEAMS.map(t => {
+      const full = p && isFull(t.code, p.cat) && t.code !== val;
+      return `<option value="${t.code}" ${t.code === val ? 'selected' : ''} ${t.code === other || full ? 'disabled' : ''}>${t.code} – ${t.name}${full ? ' (' + CAT_LABEL[p.cat] + ' full)' : ''}</option>`;
+    }).join('');
 }
 
 function render() {
@@ -289,9 +297,9 @@ function render() {
   // team summary
   $('teamTable').querySelector('tbody').innerHTML = TEAMS.map(t => {
     const mine = S.sold.filter(s => s.team === t.code);
-    const c = k => mine.filter(s => s.cat === k).length;
+    const c = k => catCount(t.code, k);
     return `<tr><td><b>${t.code}</b></td><td>${t.captain}</td>
-      <td class="num">${c('A')}</td><td class="num">${c('B')}</td><td class="num">${mine.length}</td>
+      <td class="num ${c('A') >= LIMIT.A ? 'unsold' : ''}">${c('A')}/${LIMIT.A}</td><td class="num ${c('B') >= LIMIT.B ? 'unsold' : ''}">${c('B')}/${LIMIT.B}</td><td class="num">${mine.length}</td>
       <td class="num">${num(t.purse)}</td><td class="num">${num(spent(t.code))}</td><td class="num"><b>${num(left(t.code))}</b></td></tr>`;
   }).join('');
 
@@ -312,6 +320,7 @@ function doNext() {
     if (!p) return msg(S.typed.trim() ? 'Name not found in the player list — pick it from the suggestions.' : 'Enter the singer name first.');
     if (isSold(p.name)) return msg(p.name + ' is already sold.');
     if (!S.slots[0]) return msg('Pick the team opening the bid in Team 1.');
+    if (isFull(S.slots[0], p.cat)) return msg(S.slots[0] + ' already has ' + LIMIT[p.cat] + ' ' + CAT_LABEL[p.cat] + ' players — cannot bid.');
     if (p.base > left(S.slots[0])) return msg(S.slots[0] + ' does not have enough purse left for ' + fmt(p.base) + '.');
     snap();
     S.price = p.base; S.holder = 0;
@@ -320,6 +329,7 @@ function doNext() {
     const other = 1 - S.holder;
     if (!S.slots[other]) return msg('Pick the challenging team in Team ' + (other + 1) + '.');
     if (S.slots[other] === S.slots[S.holder]) return msg('Both slots have the same team.');
+    if (isFull(S.slots[other], p.cat)) return msg(S.slots[other] + ' already has ' + LIMIT[p.cat] + ' ' + CAT_LABEL[p.cat] + ' players — cannot bid.');
     if (nextPrice(S.price) > left(S.slots[other])) return msg(S.slots[other] + ' does not have enough purse left for ' + fmt(nextPrice(S.price)) + '.');
     snap();
     S.price = nextPrice(S.price); S.holder = other;
