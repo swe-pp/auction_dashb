@@ -391,7 +391,7 @@ function syncUrl() { return DEFAULT_SYNC_URL; }
 function recOf(e) {
   const pl = playerByName[e.singer] || {}, t = teamByCode[e.team];
   return { id: e.id, time: e.time, player: e.singer, category: CAT_LABEL[e.cat], country: pl.country || '', base: pl.base || '',
-    status: e.team ? 'SOLD' : 'UNSOLD', team: e.team || '', teamName: t ? t.name : '', captain: t ? t.captain : '',
+    status: e.team ? 'SOLD' : 'UNSOLD', team: e.team || '', captain: t ? t.captain : '',
     price: e.team ? e.price : '', bids: e.bids || [] };
 }
 function queue(item) { outbox.push(item); saveOutbox(); flush(); }
