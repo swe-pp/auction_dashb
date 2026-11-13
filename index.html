@@ -5,84 +5,204 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PP Premier League – Singer Auction</title>
 <style>
-  body { font-family: Arial, sans-serif; margin: 16px; background:#fff; color:#111; }
-  h1 { font-size: 18px; margin: 0 0 12px; }
-  h2 { font-size: 16px; margin: 18px 0 6px; }
-  .row { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
-  .box { border:1px solid #999; padding:12px; border-radius:4px; }
-  .big { font-size: 22px; font-weight:bold; }
-  .mid { font-size: 16px; }
-  .holder { background:#ffe97a; }
-  table { border-collapse: collapse; }
-  th, td { border:1px solid #999; padding:4px 8px; text-align:left; font-size:14px; }
-  th { background:#eee; }
-  button { font-size:14px; padding:5px 12px; margin:4px 4px 4px 0; cursor:pointer; }
-  #nextBtn { font-weight:bold; }
-  
-  select, input { font-size:14px; padding:4px; }
-  #msg { color:#b30000; font-weight:bold; min-height:20px; }
-  .slot { padding:8px; border:1px solid #999; min-width:200px; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background:#f4f5f7; color:#111; }
+  h1 { font-size: 20px; margin: 0 0 14px; }
+  h2 { font-size: 15px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .5px; color:#444; }
+  .layout { display:grid; grid-template-columns: minmax(0,1fr) 230px; gap:16px; align-items:start; }
+  .card { background:#fff; border:1px solid #d6d8dc; border-radius:8px; padding:16px; }
+  .full { grid-column: 1 / -1; }
+  label { display:block; font-size:12px; color:#555; margin-bottom:4px; font-weight:bold; text-transform:uppercase; }
+  input, select { font-size:16px; padding:8px 10px; border:1px solid #bbb; border-radius:6px; width:100%; }
+  input:disabled, select:disabled { background:#eee; color:#333; }
+  .fields { display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px; }
+  .val { font-size:20px; font-weight:bold; padding:8px 10px; border:1px solid #bbb; border-radius:6px; background:#fafafa; min-height:42px; }
+  .slots { display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:16px; }
+  .slot { padding:10px; border:2px solid #d6d8dc; border-radius:8px; }
+  .slot .small { margin-top:6px; }
+  .holder { background:#ffe97a !important; border-color:#e0b800 !important; }
+  .live { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-top:16px; }
+  .live .val { font-size:22px; }
+  .live .big { font-size:28px; color:#0a5c2b; }
+  .btns { margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
+  button { font-size:15px; padding:9px 18px; border-radius:6px; border:1px solid #888; background:#fff; cursor:pointer; }
+  #nextBtn { background:#1d4ed8; color:#fff; border-color:#1d4ed8; font-weight:bold; }
+  #soldBtn { background:#15803d; color:#fff; border-color:#15803d; font-weight:bold; }
+  #unsoldBtn { background:#b91c1c; color:#fff; border-color:#b91c1c; }
+  #msg { color:#b30000; font-weight:bold; min-height:20px; margin-top:10px; }
   .small { font-size:12px; color:#555; }
-  textarea { width:100%; font-family:monospace; }
+  .tablewrap { overflow-x:auto; }
+  table { border-collapse: collapse; width:100%; }
+  th, td { border:1px solid #d0d0d0; padding:6px 8px; text-align:left; font-size:14px; white-space:nowrap; }
+  th { background:#eef0f3; }
+  .num { text-align:right; }
+  .unsold { color:#b30000; font-weight:bold; }
+  #ladderBox { position:sticky; top:16px; max-height:calc(100vh - 32px); overflow-y:auto; padding:12px; }
+  #ladder td, #ladder th { font-size:13px; padding:4px 6px; }
+  .bidhist { margin-top:16px; }
+  @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } #ladderBox { position:static; max-height:300px; } }
 </style>
 </head>
 <body>
 <h1>PP Premier League – Singer Auction</h1>
 
-<div class="row">
-  <!-- LEFT: controls + live -->
-  <div style="flex:1; min-width:340px;">
-  <div class="box">
-    <div>
-      Singer: <input id="singerName" placeholder="Singer name" size="18">
-      Category: <select id="singerCat"><option>A</option><option>B</option><option selected>C</option></select>
-      <span class="small" id="baseInfo"></span>
+<div class="layout">
+  <!-- On the block -->
+  <div class="card">
+    <h2>On the block</h2>
+    <label for="singerName">Singer name</label>
+    <input id="singerName" list="singerList" placeholder="Start typing a name…" autocomplete="off">
+    <datalist id="singerList"></datalist>
+    <div class="small" id="poolInfo" style="margin-top:4px;"></div>
+
+    <div class="fields">
+      <div><label>Category</label><div class="val" id="catBox">—</div></div>
+      <div><label>Base price</label><div class="val" id="baseBox">—</div></div>
     </div>
 
-    <div class="row" style="margin-top:10px;">
-      <div class="slot" id="slot0box">Team 1<br><select id="slot0"></select></div>
-      <div class="slot" id="slot1box">Team 2<br><select id="slot1"></select></div>
+    <div class="slots">
+      <div class="slot" id="slot0box"><label for="slot0">Team 1</label><select id="slot0"></select><div class="small" id="slot0left"></div></div>
+      <div class="slot" id="slot1box"><label for="slot1">Team 2</label><select id="slot1"></select><div class="small" id="slot1left"></div></div>
     </div>
 
-    <div style="margin-top:14px;">
-      <div class="mid" id="liveSinger">—</div>
-      <div style="display:flex; justify-content:space-between; gap:16px; margin-top:6px; font-size:16px;">
-        <div><span id="priceLabel">Current bid</span>: <b id="livePrice">—</b></div>
-        <div>Held by: <b id="liveHolder">—</b></div>
-        <div id="nextLine">Next bid: <b id="liveNext">—</b></div>
-      </div>
+    <div class="live">
+      <div><label id="priceLabel">Current bid</label><div class="val big" id="livePrice">—</div></div>
+      <div><label>Held by</label><div class="val" id="liveHolder">—</div></div>
+      <div><label>Next bid</label><div class="val" id="liveNext">—</div></div>
     </div>
 
     <div id="msg"></div>
-    <button id="nextBtn">Start bid</button>
-    <button id="undoBtn">Undo</button>
-    <button id="soldBtn">Sold</button>
-    <button id="unsoldBtn">Unsold</button>
+    <div class="btns">
+      <button id="nextBtn">Start bid</button>
+      <button id="soldBtn">Sold</button>
+      <button id="unsoldBtn">Unsold</button>
+      <button id="undoBtn">Undo</button>
+    </div>
+    <div class="small" style="margin-top:6px;">Shortcuts: N or Space = next bid, U = undo</div>
 
-    <h2>Bid history (this singer)</h2>
-    <table id="bidTable"><thead><tr><th>#</th><th>Price (₹)</th><th>Team 1</th><th>Team 2</th><th>Category</th></tr></thead><tbody></tbody></table>
+    <div class="bidhist">
+      <h2>Bid history (this singer)</h2>
+      <div class="tablewrap"><table id="bidTable"><thead><tr><th>#</th><th class="num">Price (₹)</th><th>Team 1</th><th>Team 2</th></tr></thead><tbody></tbody></table></div>
+    </div>
   </div>
 
-<h2>Team summary</h2>
-<table id="teamTable"><thead><tr><th>Team</th><th>A</th><th>B</th><th>C</th><th>Total singers</th><th>Spent</th><th>Purse left</th></tr></thead><tbody></tbody></table>
-
-<h2>Sold log</h2>
-<table id="soldTable"><thead><tr><th>#</th><th>Singer</th><th>Cat</th><th>Team</th><th>Price (₹)</th></tr></thead><tbody></tbody></table>
-<p><button id="resetAll">Reset everything</button></p>
+  <!-- Price ladder -->
+  <div class="card" id="ladderBox">
+    <h2>Price ladder</h2>
+    <table id="ladder"><thead><tr><th class="num">Price (₹)</th><th class="num">Step</th></tr></thead><tbody></tbody></table>
   </div>
 
-  <!-- RIGHT: price ladder -->
-  <div class="box" style="max-height:85vh; overflow-y:auto;">
-    <h2 style="margin-top:0">Price ladder</h2>
-    <table id="ladder"><thead><tr><th>Price (₹)</th><th>Step</th></tr></thead><tbody></tbody></table>
+  <!-- Team summary -->
+  <div class="card full">
+    <h2>Team summary</h2>
+    <div class="tablewrap"><table id="teamTable" style="width:auto; min-width:60%;"><thead><tr><th>Team</th><th>Captain</th><th class="num">Offline</th><th class="num">Online</th><th class="num">Bought</th><th class="num">Total purse (₹)</th><th class="num">Spent (₹)</th><th class="num">Remaining (₹)</th></tr></thead><tbody></tbody></table></div>
+    <div class="small" style="margin-top:6px;">Remaining = Total purse − Spent.</div>
+  </div>
+
+  <!-- Sold log -->
+  <div class="card full">
+    <h2>Sold log</h2>
+    <div class="tablewrap"><table id="soldTable"><thead><tr><th>#</th><th>Singer</th><th>Category</th><th>Country</th><th class="num">Base (₹)</th><th>Team</th><th class="num">Price (₹)</th></tr></thead><tbody></tbody></table></div>
+    <p><button id="resetAll">Reset everything</button></p>
   </div>
 </div>
 
-
-
 <script>
-const BASE = { A: 40000, B: 26000, C: 15000 };
+const TOTAL_PURSE = 1323000;
+const CAT_LABEL = { A: 'Offline', B: 'Online' };
 
+// code, full name, captain, captain value  → auction purse = TOTAL_PURSE - captain value
+const TEAMS = [
+  { code: 'ARR', name: 'Anna Nagar Rhythm Raiders',  captain: 'Dileep',           capValue: 133500 },
+  { code: 'DSP', name: 'Dallas Super Perfomers',     captain: 'Krishnamurthy',    capValue: 64200 },
+  { code: 'KJY', name: 'Kovai Jazzy Yorkers',        captain: 'Saikumar',         capValue: 133500 },
+  { code: 'LRE', name: 'London Royal Entertainers',  captain: 'Lee Chandran',     capValue: 116000 },
+  { code: 'MSV', name: 'Madipakkam Singers Voltz',   captain: 'Sivachandran',     capValue: 133500 },
+  { code: 'PBS', name: 'Pulsating Bangalore Stars',  captain: 'Hariharan',        capValue: 64200 },
+  { code: 'SPB', name: 'Singapore Power Beats',      captain: 'Avyukth',          capValue: 174000 },
+  { code: 'TMS', name: 'Tune Masters of Saligramam', captain: 'Karthik Shankara', capValue: 178000 },
+];
+TEAMS.forEach(t => t.purse = TOTAL_PURSE - t.capValue);
+const teamByCode = Object.fromEntries(TEAMS.map(t => [t.code, t]));
+
+// Auction pool (captains removed). [name, country, Offline/Online, base price]
+const PLAYERS = [
+  ['A Akshara Ashok','India','Offline',60000],
+  ['A.Nithyashree','India','Offline',30000],
+  ['Amrita Arvind','India','Online',15000],
+  ['Ananthi','India','Offline',20000],
+  ['Anbazhagan','India','Offline',30000],
+  ['Anitha','India','Offline',15000],
+  ['Bala Venkat','Singapore','Online',15000],
+  ['Balakumar KS','India','Offline',15000],
+  ['Baskar','United Kingdom','Online',30000],
+  ['Bharathiraja b','India','Offline',20000],
+  ['Deepak Roshan Palani','India','Offline',30000],
+  ['Denis Dayal K','United States','Online',20000],
+  ['DHANYA MAYURAN','India','Offline',40000],
+  ['Dinesh','Singapore','Online',30000],
+  ['Divya T S','India','Offline',40000],
+  ['Dr Senthil Suthanthirakumar','India','Offline',30000],
+  ['Dr Shalini Balachander','United Kingdom','Online',30000],
+  ['Gunasekaran','Singapore','Online',20000],
+  ['GURUNATHAN GURUKAILASAM','Singapore','Online',15000],
+  ['Hari S Padmanabhan','India','Online',30000],
+  ['K.Dhansik','India','Offline',20000],
+  ['Kannan','India','Offline',15000],
+  ['Kannan LS','Singapore','Online',30000],
+  ['Karthik Balachandran','India','Online',40000],
+  ['Lakshmi','India','Online',30000],
+  ['Leeban','India','Offline',30000],
+  ['Magdalene Ratna','India','Offline',15000],
+  ['Manasa','India','Offline',30000],
+  ['Megavarshini','Saudi Arabia','Online',60000],
+  ['Muthumeenal Natarajan','India','Online',20000],
+  ['Narayani AV','India','Offline',30000],
+  ['Narendran','India','Offline',30000],
+  ['Pavithra Vijayanand','United States','Online',30000],
+  ['Prakash Ramachandran','India','Offline',15000],
+  ['Prashanth R','India','Offline',20000],
+  ['Preethi Ravichandran','United Kingdom','Online',30000],
+  ['R Dharmarajan','India','Offline',30000],
+  ['R.Banumathi','India','Offline',15000],
+  ['Raghunathan Narasimhan','United States','Online',15000],
+  ['Rajambal','United States','Online',60000],
+  ['Rajesh Kanna R','India','Offline',30000],
+  ['Ramesh Gandhi','India','Offline',30000],
+  ['Risika','India','Offline',40000],
+  ['Riyaz','India','Offline',40000],
+  ['Sai Mahathi','India','Offline',40000],
+  ['Santha','Norway','Online',30000],
+  ['Saravanakumar G','Singapore','Online',20000],
+  ['Satheesh Pachiappan','Australia','Online',40000],
+  ['Shanthini Lakshman','United Kingdom','Online',15000],
+  ['Sivakumar Sivan','India','Offline',20000],
+  ['Sivakumar Venkataraman','India','Online',30000],
+  ['Sowmya Sundar','India','Offline',40000],
+  ['Sreedevi','United States','Online',110000],
+  ['Sreedharen PJ','India','Offline',20000],
+  ['Srinaya Nageswar','India','Offline',60000],
+  ['Subramanian Padmanabhan','India','Offline',40000],
+  ['Sujatha R','India','Offline',30000],
+  ['Sundaram Dandapany','India','Offline',20000],
+  ['Suresh Thillai','India','Offline',15000],
+  ['Swapna','India','Offline',20000],
+  ['T K VASUDEVAN','India','Online',30000],
+  ['Tejasvini Nitya Sathish Kumar','Canada','Online',30000],
+  ['TTS Lakshmi Narasiman','India','Offline',20000],
+  ['Udayshankar Rao KN','India','Online',15000],
+  ['Uma Karthik','India','Offline',20000],
+  ['Umesh','Singapore','Online',20000],
+  ['V. Sriram','India','Offline',15000],
+  ['Vasantha Satheesh','India','Online',30000],
+  ['Vasanthi sathyanarayanan','India','Online',20000],
+  ['VEERARAGHAVAN M G','India','Offline',15000],
+  ['Vignesh Sundararaman','Singapore','Online',40000],
+  ['Yaagavi S','India','Offline',20000],
+].map(([name, country, mode, base]) => ({ name, country, cat: mode === 'Offline' ? 'A' : 'B', base }));
+const playerByName = Object.fromEntries(PLAYERS.map(p => [p.name, p]));
+
+// Bid increments (from the bid sheet)
 function step(p) {
   if (p < 20000) return 1000;
   if (p < 30000) return 2000;
@@ -95,91 +215,103 @@ function step(p) {
 }
 const nextPrice = p => p + step(p);
 const fmt = n => n == null ? '—' : '₹' + n.toLocaleString('en-IN');
+const num = n => n.toLocaleString('en-IN');
 
-let S = {
-  teams: ['🔴 ROB','⚫ TCK','🟤 KGF','🟠 MSD','🟢 DRP','🟣 MVP','🟡 LSK','🔵 AIR'],
-  defaultPurse: 1536000, purses: {},
-  singer: '', cat: 'C',
-  slots: ['', ''], price: null, holder: null, bids: [],
-  sold: [], queue: []
-};
+const KEY = 'ppl_auction_v3';
+let S = { typed: '', singer: '', slots: ['', ''], price: null, holder: null, bids: [], sold: [] };
 let history = [];
 
-function save() { try { localStorage.setItem('ppl_auction_v2', JSON.stringify(S)); } catch (e) {} }
-function load() { try { const d = localStorage.getItem('ppl_auction_v2'); if (d) S = Object.assign(S, JSON.parse(d)); } catch (e) {} }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function load() { try { const d = localStorage.getItem(KEY); if (d) S = Object.assign(S, JSON.parse(d)); } catch (e) {} }
 function snap() { history.push(JSON.stringify(S)); if (history.length > 200) history.shift(); }
-function purseOf(t) { return S.purses[t] != null ? S.purses[t] : S.defaultPurse; }
-function spent(t) { return S.sold.filter(s => s.team === t).reduce((a, s) => a + s.price, 0); }
-function left(t) { return purseOf(t) - spent(t); }
+function spent(c) { return S.sold.filter(s => s.team === c).reduce((a, s) => a + s.price, 0); }
+function left(c) { return teamByCode[c].purse - spent(c); }
 function msg(t) { document.getElementById('msg').textContent = t || ''; }
 const $ = id => document.getElementById(id);
+const cur = () => playerByName[S.singer];
+const isSold = n => S.sold.some(s => s.singer === n && s.team);
+const wasUnsold = n => S.sold.some(s => s.singer === n && !s.team);
+const findPlayer = txt => { const t = txt.trim().toLowerCase(); return PLAYERS.find(p => p.name.toLowerCase() === t); };
 
-function fillSelect(sel, val, other) {
-  sel.innerHTML = '<option value="">— select —</option>' +
-    S.teams.map(t => `<option ${t === val ? 'selected' : ''} ${t === other ? 'disabled' : ''}>${t}</option>`).join('');
+function fillTeamSelect(sel, val, other) {
+  sel.innerHTML = '<option value="">— select team —</option>' +
+    TEAMS.map(t => `<option value="${t.code}" ${t.code === val ? 'selected' : ''} ${t.code === other ? 'disabled' : ''}>${t.code} – ${t.name}</option>`).join('');
 }
 
 function render() {
-  $('singerName').value = S.singer;
-  $('singerCat').value = S.cat;
-  $('baseInfo').textContent = 'Base: ' + fmt(BASE[S.cat]);
   const live = S.price != null;
-  $('singerName').disabled = live; $('singerCat').disabled = live;
+  const p = cur();
 
-  fillSelect($('slot0'), S.slots[0], S.slots[1]);
-  fillSelect($('slot1'), S.slots[1], S.slots[0]);
-  // holding team's slot is locked while bidding
-  $('slot0').disabled = live && S.holder === 0;
-  $('slot1').disabled = live && S.holder === 1;
-  $('slot0box').className = 'slot' + (live && S.holder === 0 ? ' holder' : '');
-  $('slot1box').className = 'slot' + (live && S.holder === 1 ? ' holder' : '');
+  // singer name box + suggestions (players not yet sold to a team)
+  const pool = PLAYERS.filter(x => !isSold(x.name));
+  $('singerList').innerHTML = pool.map(x => `<option value="${x.name}">`).join('');
+  if (document.activeElement !== $('singerName')) $('singerName').value = S.typed;
+  $('singerName').disabled = live;
+  const again = pool.filter(x => wasUnsold(x.name)).length;
+  $('poolInfo').textContent = `Sold ${PLAYERS.length - pool.length} of ${PLAYERS.length} · Remaining ${pool.length}` + (again ? ` (unsold earlier: ${again})` : '');
 
-  $('liveSinger').textContent = S.singer ? `${S.singer} (Category ${S.cat})` : '—';
-  $('priceLabel').textContent = live ? 'Current bid' : 'Base price';
-  $('livePrice').textContent = live ? fmt(S.price) : fmt(BASE[S.cat]);
+  $('catBox').textContent = p ? CAT_LABEL[p.cat] : '—';
+  $('baseBox').textContent = p ? fmt(p.base) : '—';
+
+  fillTeamSelect($('slot0'), S.slots[0], S.slots[1]);
+  fillTeamSelect($('slot1'), S.slots[1], S.slots[0]);
+  [0, 1].forEach(i => {
+    $('slot' + i).disabled = live && S.holder === i;
+    $('slot' + i + 'box').className = 'slot' + (live && S.holder === i ? ' holder' : '');
+    $('slot' + i + 'left').textContent = S.slots[i] ? 'Purse left: ' + fmt(left(S.slots[i])) : '';
+  });
+
+  $('priceLabel').textContent = live ? 'Current bid' : 'Opening bid';
+  $('livePrice').textContent = live ? fmt(S.price) : (p ? fmt(p.base) : '—');
   $('liveHolder').textContent = live ? S.slots[S.holder] : '—';
-  $('liveNext').textContent = live ? fmt(nextPrice(S.price)) : '';
-  $('nextLine').style.visibility = live ? '' : 'hidden';
-  $('nextBtn').textContent = live ? 'Next' : 'Start bid';
+  $('liveNext').textContent = live ? fmt(nextPrice(S.price)) : '—';
+  $('nextBtn').textContent = live ? 'Next bid' : 'Start bid';
 
   // bid history
   $('bidTable').querySelector('tbody').innerHTML = S.bids.map((b, i) =>
-    `<tr class="${i === S.bids.length - 1 ? 'holder' : ''}"><td>${i + 1}</td><td>${b.price.toLocaleString('en-IN')}</td>
-     <td>${b.slot === 0 ? b.team : ''}</td><td>${b.slot === 1 ? b.team : ''}</td><td>${S.cat}</td></tr>`).join('');
+    `<tr class="${i === S.bids.length - 1 ? 'holder' : ''}"><td>${i + 1}</td><td class="num">${num(b.price)}</td>
+     <td>${b.slot === 0 ? b.team : ''}</td><td>${b.slot === 1 ? b.team : ''}</td></tr>`).join('');
 
-  // ladder: every valid price from the base price up to the largest team purse
-  let p = BASE[S.cat], rows = '', limit = Math.max(...S.teams.map(purseOf));
-  while (p <= limit) {
-    rows += `<tr class="${p === S.price ? 'holder' : ''}"><td>${p.toLocaleString('en-IN')}</td><td>+${step(p).toLocaleString('en-IN')}</td></tr>`;
-    p = nextPrice(p);
+  // ladder: from this singer's base price up to the largest auction purse
+  let lp = p ? p.base : 15000, rows = '';
+  const limit = Math.max(...TEAMS.map(t => t.purse));
+  while (lp <= limit) {
+    rows += `<tr class="${lp === S.price ? 'holder' : ''}"><td class="num">${num(lp)}</td><td class="num">+${num(step(lp))}</td></tr>`;
+    lp = nextPrice(lp);
   }
   $('ladder').querySelector('tbody').innerHTML = rows;
-  const cur = $('ladder').querySelector('tr.holder');
-  if (cur) cur.scrollIntoView({ block: 'nearest' });
+  const curRow = $('ladder').querySelector('tr.holder');
+  if (curRow) curRow.scrollIntoView({ block: 'nearest' });
 
   // team summary
-  $('teamTable').querySelector('tbody').innerHTML = S.teams.map(t => {
-    const mine = S.sold.filter(s => s.team === t);
+  $('teamTable').querySelector('tbody').innerHTML = TEAMS.map(t => {
+    const mine = S.sold.filter(s => s.team === t.code);
     const c = k => mine.filter(s => s.cat === k).length;
-    return `<tr><td>${t}</td><td>${c('A')}</td><td>${c('B')}</td><td>${c('C')}</td><td>${mine.length}</td><td>${spent(t).toLocaleString('en-IN')}</td><td><b>${left(t).toLocaleString('en-IN')}</b></td></tr>`;
+    return `<tr><td><b>${t.code}</b></td><td>${t.captain}</td>
+      <td class="num">${c('A')}</td><td class="num">${c('B')}</td><td class="num">${mine.length}</td>
+      <td class="num">${num(t.purse)}</td><td class="num">${num(spent(t.code))}</td><td class="num"><b>${num(left(t.code))}</b></td></tr>`;
   }).join('');
 
   // sold log (latest first)
-  $('soldTable').querySelector('tbody').innerHTML = S.sold.map((s, i) =>
-    `<tr><td>${i + 1}</td><td>${s.singer}</td><td>${s.cat}</td><td>${s.team || 'UNSOLD'}</td><td>${s.team ? s.price.toLocaleString('en-IN') : '—'}</td></tr>`
-  ).reverse().join('');
+  $('soldTable').querySelector('tbody').innerHTML = S.sold.map((s, i) => {
+    const pl = playerByName[s.singer] || {};
+    return `<tr><td>${i + 1}</td><td>${s.singer}</td><td>${CAT_LABEL[s.cat]}</td><td>${pl.country || ''}</td><td class="num">${pl.base ? num(pl.base) : ''}</td>
+      <td class="${s.team ? '' : 'unsold'}">${s.team || 'UNSOLD'}</td><td class="num">${s.team ? num(s.price) : '—'}</td></tr>`;
+  }).reverse().join('');
 
   save();
 }
 
 function doNext() {
   msg('');
+  const p = cur();
   if (S.price == null) {
-    if (!S.singer.trim()) return msg('Enter the singer name first.');
+    if (!p) return msg(S.typed.trim() ? 'Name not found in the player list — pick it from the suggestions.' : 'Enter the singer name first.');
+    if (isSold(p.name)) return msg(p.name + ' is already sold.');
     if (!S.slots[0]) return msg('Pick the team opening the bid in Team 1.');
-    if (BASE[S.cat] > left(S.slots[0])) return msg(S.slots[0] + ' does not have enough purse left for this bid.');
+    if (p.base > left(S.slots[0])) return msg(S.slots[0] + ' does not have enough purse left for ' + fmt(p.base) + '.');
     snap();
-    S.price = BASE[S.cat]; S.holder = 0;
+    S.price = p.base; S.holder = 0;
     S.bids = [{ price: S.price, team: S.slots[0], slot: 0 }];
   } else {
     const other = 1 - S.holder;
@@ -193,44 +325,46 @@ function doNext() {
   render();
 }
 
-function loadNextSinger() {
-  S.price = null; S.holder = null; S.bids = []; S.slots = ['', ''];
-  if (S.queue.length) { const q = S.queue.shift(); S.singer = q.name; S.cat = q.cat; }
-  else { S.singer = ''; }
-}
+function clearBlock() { S.price = null; S.holder = null; S.bids = []; S.slots = ['', '']; S.singer = ''; S.typed = ''; $('singerName').value = ''; }
 
 function doSold() {
   msg('');
   if (S.price == null) return msg('No bid yet.');
   snap();
-  S.sold.push({ singer: S.singer, cat: S.cat, team: S.slots[S.holder], price: S.price });
-  loadNextSinger(); render();
+  S.sold.push({ singer: S.singer, cat: cur().cat, team: S.slots[S.holder], price: S.price });
+  clearBlock(); render();
 }
 function doUnsold() {
   msg('');
-  if (!S.singer.trim()) return msg('No singer on the block.');
+  if (!cur()) return msg('No singer on the block.');
   snap();
-  S.sold.push({ singer: S.singer, cat: S.cat, team: '', price: 0 });
-  loadNextSinger(); render();
+  S.sold.push({ singer: S.singer, cat: cur().cat, team: '', price: 0 });
+  clearBlock(); render();
 }
 function doUndo() {
   msg('');
   if (!history.length) return msg('Nothing to undo.');
-  S = JSON.parse(history.pop()); render();
+  S = JSON.parse(history.pop()); $('singerName').value = S.typed; render();
 }
 
 $('nextBtn').onclick = doNext;
 $('soldBtn').onclick = doSold;
 $('unsoldBtn').onclick = doUnsold;
 $('undoBtn').onclick = doUndo;
-$('singerName').oninput = e => { S.singer = e.target.value; save(); $('liveSinger').textContent = S.singer ? `${S.singer} (Category ${S.cat})` : '—'; };
-$('singerCat').onchange = e => { S.cat = e.target.value; render(); };
+$('singerName').oninput = e => {
+  S.typed = e.target.value;
+  const p = findPlayer(S.typed);
+  S.singer = p ? p.name : '';
+  msg(p && isSold(p.name) ? p.name + ' is already sold.' : '');
+  render();
+};
+$('singerName').onchange = e => { const p = findPlayer(e.target.value); if (p) { S.typed = p.name; e.target.value = p.name; render(); } };
 $('slot0').onchange = e => { snap(); S.slots[0] = e.target.value; render(); };
 $('slot1').onchange = e => { snap(); S.slots[1] = e.target.value; render(); };
 
 $('resetAll').onclick = () => {
   if (!$('resetAll').dataset.confirm) { $('resetAll').dataset.confirm = '1'; $('resetAll').textContent = 'Click again to confirm reset'; return; }
-  try { localStorage.removeItem('ppl_auction_v2'); } catch (e) {}
+  try { localStorage.removeItem(KEY); } catch (e) {}
   location.reload();
 };
 document.addEventListener('keydown', e => {
@@ -239,7 +373,10 @@ document.addEventListener('keydown', e => {
   if (e.key === 'u' || e.key === 'U') doUndo();
 });
 
-load(); render();
+load();
+if (S.singer && !playerByName[S.singer]) S.singer = '';
+if (!S.typed && S.singer) S.typed = S.singer;
+render();
 </script>
 </body>
 </html>
