@@ -12,6 +12,7 @@
   .layout { display:grid; grid-template-columns: minmax(0,1fr) 230px; gap:16px; align-items:start; }
   .card { background:#fff; border:1px solid #d6d8dc; border-radius:8px; padding:16px; }
   .full { grid-column: 1 / -1; }
+  .lower { display:grid; gap:16px; margin-top:16px; }
   label { display:block; font-size:12px; color:#555; margin-bottom:4px; font-weight:bold; text-transform:uppercase; }
   input, select { font-size:16px; padding:8px 10px; border:1px solid #bbb; border-radius:6px; width:100%; }
   input:disabled, select:disabled { background:#eee; color:#333; }
@@ -91,7 +92,9 @@
     <h2>Price ladder</h2>
     <table id="ladder"><thead><tr><th class="num">Price (₹)</th><th class="num">Step</th></tr></thead><tbody></tbody></table>
   </div>
+</div>
 
+<div class="lower">
   <!-- Team summary -->
   <div class="card full">
     <h2>Team summary</h2>
@@ -104,6 +107,18 @@
     <h2>Sold log</h2>
     <div class="tablewrap"><table id="soldTable"><thead><tr><th>#</th><th>Singer</th><th>Category</th><th>Country</th><th class="num">Base (₹)</th><th>Team</th><th class="num">Price (₹)</th></tr></thead><tbody></tbody></table></div>
     <p><button id="resetAll">Reset everything</button></p>
+  </div>
+
+  <!-- Google Sheet sync -->
+  <div class="card full">
+    <h2>Google Sheet log</h2>
+    <label for="syncUrl">Apps Script web app URL</label>
+    <div style="display:flex; gap:8px;">
+      <input id="syncUrl" placeholder="https://script.google.com/macros/s/…/exec">
+      <button id="syncSave">Save</button>
+      <button id="syncResend" title="Sends every sold/unsold entry again; rows already in the sheet are skipped">Resend all</button>
+    </div>
+    <div id="syncStatus" style="margin-top:8px; font-weight:bold;"></div>
   </div>
 </div>
 
@@ -331,20 +346,25 @@ function doSold() {
   msg('');
   if (S.price == null) return msg('No bid yet.');
   snap();
-  S.sold.push({ singer: S.singer, cat: cur().cat, team: S.slots[S.holder], price: S.price });
+  const e = { id: 'L' + Date.now(), time: new Date().toISOString(), singer: S.singer, cat: cur().cat, team: S.slots[S.holder], price: S.price, bids: S.bids.map(b => ({ team: b.team, price: b.price })) };
+  S.sold.push(e); queue({ action: 'add', rec: recOf(e) });
   clearBlock(); render();
 }
 function doUnsold() {
   msg('');
   if (!cur()) return msg('No singer on the block.');
   snap();
-  S.sold.push({ singer: S.singer, cat: cur().cat, team: '', price: 0 });
+  const e = { id: 'L' + Date.now(), time: new Date().toISOString(), singer: S.singer, cat: cur().cat, team: '', price: 0, bids: S.bids.map(b => ({ team: b.team, price: b.price })) };
+  S.sold.push(e); queue({ action: 'add', rec: recOf(e) });
   clearBlock(); render();
 }
 function doUndo() {
   msg('');
   if (!history.length) return msg('Nothing to undo.');
+  const before = S.sold.map(x => x.id);
   S = JSON.parse(history.pop()); $('singerName').value = S.typed; render();
+  const now = new Set(S.sold.map(x => x.id));
+  before.filter(id => id && !now.has(id)).forEach(id => queue({ action: 'delete', id }));
 }
 
 $('nextBtn').onclick = doNext;
@@ -373,10 +393,50 @@ document.addEventListener('keydown', e => {
   if (e.key === 'u' || e.key === 'U') doUndo();
 });
 
+// ---------- Google Sheet sync ----------
+const SYNC_KEY = 'ppl_sync_url', OUTBOX_KEY = 'ppl_outbox';
+let outbox = []; try { outbox = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]'); } catch (e) {}
+let flushing = false, lastErr = '';
+function saveOutbox() { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox)); } catch (e) {} }
+function syncUrl() { try { return localStorage.getItem(SYNC_KEY) || ''; } catch (e) { return ''; } }
+function recOf(e) {
+  const pl = playerByName[e.singer] || {}, t = teamByCode[e.team];
+  return { id: e.id, time: e.time, player: e.singer, category: CAT_LABEL[e.cat], country: pl.country || '', base: pl.base || '',
+    status: e.team ? 'SOLD' : 'UNSOLD', team: e.team || '', teamName: t ? t.name : '', captain: t ? t.captain : '',
+    price: e.team ? e.price : '', bids: e.bids || [] };
+}
+function queue(item) { outbox.push(item); saveOutbox(); flush(); }
+function syncStatus() {
+  const el = $('syncStatus');
+  if (!syncUrl()) { el.style.color = '#b30000'; el.textContent = 'Not connected — paste the Apps Script URL and click Save.' + (outbox.length ? ` (${outbox.length} waiting)` : ''); return; }
+  if (!outbox.length) { el.style.color = '#15803d'; el.textContent = 'Google Sheet: all synced ✓'; return; }
+  el.style.color = '#b45309';
+  el.textContent = `Google Sheet: ${outbox.length} waiting to send` + (lastErr ? ` — last error: ${lastErr} (retrying every 15s)` : '…');
+}
+async function flush() {
+  const url = syncUrl();
+  if (!url || flushing || !outbox.length) return syncStatus();
+  flushing = true; syncStatus();
+  try {
+    while (outbox.length) {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(outbox[0]) });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error || 'sheet error');
+      outbox.shift(); saveOutbox();
+    }
+    lastErr = '';
+  } catch (e) { lastErr = String(e.message || e); }
+  flushing = false; syncStatus();
+}
+setInterval(flush, 15000);
+$('syncUrl').value = syncUrl();
+$('syncSave').onclick = () => { try { localStorage.setItem(SYNC_KEY, $('syncUrl').value.trim()); } catch (e) {} lastErr = ''; flush(); };
+$('syncResend').onclick = () => { S.sold.filter(x => x.id).forEach(x => outbox.push({ action: 'add', rec: recOf(x) })); saveOutbox(); flush(); };
+
 load();
 if (S.singer && !playerByName[S.singer]) S.singer = '';
 if (!S.typed && S.singer) S.typed = S.singer;
-render();
+render(); flush();
 </script>
 </body>
 </html>
