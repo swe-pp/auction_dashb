@@ -434,6 +434,8 @@ function liveState() {
   }
   return { status: 'WAITING' };
 }
+// BACKUP MODE: live status goes to the PHP file on GoDaddy (sheet rows still go to Google)
+const LIVE_PUSH_URL = 'https://auction.ppmusic.in/live.php';
 let liveSent = '', liveBusy = false, liveDirty = false;
 async function pushLive() {
   const st = liveState(), key = JSON.stringify(st);
@@ -441,7 +443,10 @@ async function pushLive() {
   if (liveBusy) { liveDirty = true; return; }
   liveBusy = true; liveDirty = false;
   try {
-    const res = await fetch(syncUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'live', state: Object.assign({ ts: Date.now() }, st) }) });
+    const payload = JSON.stringify({ action: 'live', state: Object.assign({ ts: Date.now() }, st) });
+    // also keep Google updated, so viewers still on the old page don't freeze (not waited for)
+    fetch(syncUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: payload }).catch(() => {});
+    const res = await fetch(LIVE_PUSH_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: payload });
     const j = await res.json(); if (j.ok) liveSent = key;
   } catch (e) { console.warn('live push failed', e); }
   liveBusy = false;
