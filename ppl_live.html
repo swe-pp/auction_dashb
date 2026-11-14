@@ -38,6 +38,10 @@
   .box { transition:background .8s; }
   .bump { background:#ffe2cc; }
 
+  .yt { background:#fff; border:1px solid #e3e3e3; border-radius:8px; margin-top:16px; padding:16px 20px 18px; }
+  .yt h2 { font-size:16px; margin:0 0 10px; }
+  .small-note { font-size:14px; color:#555; }
+  .ytbtn { display:inline-block; margin-top:10px; background:#ED5500; color:#fff; text-decoration:none; font-size:14px; font-weight:bold; padding:8px 14px; border-radius:5px; }
   footer { max-width:820px; margin:0 auto; padding:4px 16px 24px; font-size:12px; color:#888; }
   footer b { color:#1f8a3b; }
   footer.off b { color:#d91e1e; }
@@ -61,13 +65,23 @@
     </div>
     <div id="body"></div>
   </div>
+
+  <div class="yt" id="ytBox">
+    <h2>Watch the auction live</h2>
+    <div class="small-note">The auction is streaming live on YouTube.</div>
+    <a class="ytbtn" id="ytLink" target="_blank" rel="noopener">▶ Watch on YouTube</a>
+  </div>
 </main>
 
 <footer id="foot"><b>●</b> <span id="footText">Connecting…</span></footer>
 
 <script>
 const LIVE_URL = 'https://script.google.com/macros/s/AKfycbyUO2pfXfY5aMkEQkxvJKol6Wc-2B3a6p5oyqYZ6Au0Ce1WohY0f2iQE5k-DYsawmJS/exec?live';
-const POLL_MS = 2000;
+const POLL_MS = 3000;          // how often to check for a new bid
+const MAX_WAIT_MS = 20000;     // longest wait when Google is busy
+
+// YouTube live stream — to change it, paste the new link between the quotes
+const YOUTUBE_LINK = 'https://www.youtube.com/watch?v=LpkS9WqfxCA';
 
 const $ = id => document.getElementById(id);
 const fmt = n => '₹' + Number(n).toLocaleString('en-IN');
@@ -118,18 +132,34 @@ function show(d) {
   }
 }
 
+// YouTube box
+(function () {
+  const m = YOUTUBE_LINK.match(/(?:v=|youtu\.be\/|\/live\/|\/embed\/)([A-Za-z0-9_-]{11})/);
+  if (!m) { $('ytBox').style.display = 'none'; return; }
+  $('ytLink').href = YOUTUBE_LINK;
+})();
+
+// Checking for updates: pauses while the page isn't on screen, slows down if Google is busy
+let timer = null, fails = 0, busy = false;
+function schedule(ms) { clearTimeout(timer); timer = setTimeout(poll, ms); }
 async function poll() {
+  if (document.hidden) return;                 // resumes when the page is visible again
+  if (busy) return;
+  busy = true;
   try {
     const res = await fetch(LIVE_URL + '&t=' + Date.now(), { cache: 'no-store' });
     const d = await res.json();
     if (!d.ts || d.ts >= lastTs) { lastTs = d.ts || lastTs; show(d); }
-    lastOk = Date.now();
-  } catch (e) {}
+    lastOk = Date.now(); fails = 0;
+  } catch (e) { fails++; }
+  busy = false;
   const off = Date.now() - lastOk > 10000;
   $('foot').className = off ? 'off' : '';
   $('footText').textContent = off ? 'Reconnecting…' : 'This page updates on its own — no need to refresh.';
-  setTimeout(poll, POLL_MS);
+  const wait = fails ? Math.min(POLL_MS * Math.pow(2, fails), MAX_WAIT_MS) : POLL_MS;
+  schedule(wait + Math.floor(Math.random() * 500));
 }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) schedule(0); });
 poll();
 </script>
 </body>
