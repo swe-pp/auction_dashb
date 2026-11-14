@@ -78,6 +78,7 @@
       <button id="soldBtn">Sold</button>
       <button id="unsoldBtn">Unsold</button>
       <button id="undoBtn">Undo</button>
+      <label style="display:inline-flex; align-items:center; gap:6px; font-size:14px; text-transform:none; color:#b30000; font-weight:bold; margin-left:8px;"><input type="checkbox" id="noLimits" style="width:auto;"> Ignore purse &amp; player limits</label>
     </div>
     <div class="small" style="margin-top:6px;">Shortcuts: N or Space = next bid, U = undo</div>
 
@@ -107,6 +108,7 @@
     <h2>Sold log</h2>
     <div class="tablewrap"><table id="soldTable"><thead><tr><th>#</th><th>Singer</th><th>ID</th><th>Category</th><th>Country</th><th class="num">Base (₹)</th><th>Team</th><th class="num">Price (₹)</th></tr></thead><tbody></tbody></table></div>
     <p><button id="reloadSheet">Reload from Google Sheet</button> <button id="resetAuction" style="border-color:#b91c1c;color:#b91c1c;">Reset auction</button> <span class="small" id="sheetInfo"></span></p>
+    <div id="sheetWarn" style="color:#b30000; font-size:13px; margin-top:6px;"></div>
   </div>
 </div>
 
@@ -210,7 +212,7 @@ const playerByName = Object.fromEntries(PLAYERS.map(p => [p.name, p]));
 function step(p) {
   if (p < 20000) return 1000;
   if (p < 30000) return 2000;
-  if (p < 60000) return 5000;
+  if (p < 50000) return 5000;
   if (p < 110000) return 10000;
   if (p < 210000) return 20000;
   if (p < 360000) return 30000;
@@ -237,6 +239,7 @@ const isSold = n => S.sold.some(s => s.singer === n && s.team);
 const wasUnsold = n => S.sold.some(s => s.singer === n && !s.team);
 const findPlayer = txt => { const t = txt.trim().toLowerCase(); return PLAYERS.find(p => p.name.toLowerCase() === t); };
 
+function noLimits() { const el = document.getElementById('noLimits'); return !!(el && el.checked); }
 function catCount(c, cat) { return S.sold.filter(s => s.team === c && s.cat === cat).length + (teamByCode[c].capCat === cat ? 1 : 0); }
 function isFull(c, cat) { return catCount(c, cat) >= LIMIT[cat]; }
 
@@ -244,7 +247,7 @@ function fillTeamSelect(sel, val, other) {
   const p = cur();
   sel.innerHTML = '<option value="">— select team —</option>' +
     TEAMS.map(t => {
-      const full = p && isFull(t.code, p.cat) && t.code !== val;
+      const full = !noLimits() && p && isFull(t.code, p.cat) && t.code !== val;
       return `<option value="${t.code}" ${t.code === val ? 'selected' : ''} ${t.code === other || full ? 'disabled' : ''}>${t.code} – ${t.name}${full ? ' (' + CAT_LABEL[p.cat] + ' full)' : ''}</option>`;
     }).join('');
 }
@@ -322,8 +325,8 @@ function doNext() {
     if (!p) return msg(S.typed.trim() ? 'Name not found in the player list — pick it from the suggestions.' : 'Enter the singer name first.');
     if (isSold(p.name)) return msg(p.name + ' is already sold.');
     if (!S.slots[0]) return msg('Pick the team opening the bid in Team 1.');
-    if (isFull(S.slots[0], p.cat)) return msg(S.slots[0] + ' already has ' + LIMIT[p.cat] + ' ' + CAT_LABEL[p.cat] + ' players — cannot bid.');
-    if (p.base > left(S.slots[0])) return msg(S.slots[0] + ' does not have enough purse left for ' + fmt(p.base) + '.');
+    if (!noLimits() && isFull(S.slots[0], p.cat)) return msg(S.slots[0] + ' already has ' + LIMIT[p.cat] + ' ' + CAT_LABEL[p.cat] + ' players — cannot bid.');
+    if (!noLimits() && p.base > left(S.slots[0])) return msg(S.slots[0] + ' does not have enough purse left for ' + fmt(p.base) + '.');
     snap();
     S.price = p.base; S.holder = 0;
     S.bids = [{ price: S.price, team: S.slots[0], slot: 0 }];
@@ -331,8 +334,8 @@ function doNext() {
     const other = 1 - S.holder;
     if (!S.slots[other]) return msg('Pick the challenging team in Team ' + (other + 1) + '.');
     if (S.slots[other] === S.slots[S.holder]) return msg('Both slots have the same team.');
-    if (isFull(S.slots[other], p.cat)) return msg(S.slots[other] + ' already has ' + LIMIT[p.cat] + ' ' + CAT_LABEL[p.cat] + ' players — cannot bid.');
-    if (nextPrice(S.price) > left(S.slots[other])) return msg(S.slots[other] + ' does not have enough purse left for ' + fmt(nextPrice(S.price)) + '.');
+    if (!noLimits() && isFull(S.slots[other], p.cat)) return msg(S.slots[other] + ' already has ' + LIMIT[p.cat] + ' ' + CAT_LABEL[p.cat] + ' players — cannot bid.');
+    if (!noLimits() && nextPrice(S.price) > left(S.slots[other])) return msg(S.slots[other] + ' does not have enough purse left for ' + fmt(nextPrice(S.price)) + '.');
     snap();
     S.price = nextPrice(S.price); S.holder = other;
     S.bids.push({ price: S.price, team: S.slots[other], slot: other });
@@ -396,6 +399,8 @@ $('resetAuction').onclick = async () => {
   try { localStorage.removeItem(KEY); } catch (e) {}
   location.reload();
 };
+$('noLimits').checked = (function () { try { return localStorage.getItem('ppl_nolimits') === '1'; } catch (e) { return false; } })();
+$('noLimits').onchange = e => { try { localStorage.setItem('ppl_nolimits', e.target.checked ? '1' : '0'); } catch (x) {} render(); };
 $('reloadSheet').onclick = () => { if (S.price != null) return msg('Finish the current bid (Sold / Unsold) first.'); loadFromSheet(true); };
 document.addEventListener('keydown', e => {
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
@@ -482,10 +487,27 @@ function parseBids(arr) {
     return m ? { team: m[1], price: Number(m[2].replace(/,/g, '')) } : null;
   }).filter(Boolean);
 }
+// forgiving matching for rows typed by hand: ignores capitals, dots and extra spaces
+const normName = n => String(n || '').toLowerCase().replace(/[.\s]+/g, ' ').trim();
+const playerByNorm = Object.fromEntries(PLAYERS.map(p => [normName(p.name), p]));
+const teamByAny = {};
+TEAMS.forEach(t => { teamByAny[t.code.toLowerCase()] = t.code; teamByAny[t.name.toLowerCase().replace(/\s+/g, ' ').trim()] = t.code; });
+function matchPlayer(name) { return playerByName[name] || playerByNorm[normName(name)] || null; }
+function matchTeam(x) { return teamByAny[String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()] || ''; }
+function rowProblem(r) {
+  if (!matchPlayer(r.player)) return 'name not in player list';
+  const st = String(r.status || '').trim().toUpperCase();
+  if (st === 'SOLD') {
+    if (!matchTeam(r.team)) return 'team "' + r.team + '" not recognised';
+    if (!(Number(String(r.price).replace(/[^\d]/g, '')) > 0)) return 'price missing';
+  } else if (st !== 'UNSOLD') return 'status should be SOLD or UNSOLD';
+  return '';
+}
 function fromRow(r) {
-  const sold = r.status === 'SOLD';
-  return { id: r.id, time: r.time, singer: r.player, cat: playerByName[r.player].cat,
-    team: sold ? r.team : '', price: sold ? Number(String(r.price).replace(/,/g, '')) : 0, bids: parseBids(r.bids) };
+  const p = matchPlayer(r.player);
+  const sold = String(r.status || '').trim().toUpperCase() === 'SOLD';
+  return { id: r.id, time: r.time, singer: p.name, cat: p.cat,
+    team: sold ? matchTeam(r.team) : '', price: sold ? Number(String(r.price).replace(/[^\d]/g, '')) : 0, bids: parseBids(r.bids) };
 }
 const soldKey = arr => arr.map(x => x.id + '|' + x.team + '|' + x.price).join(';');
 let sheetLoading = false;
@@ -497,16 +519,21 @@ async function loadFromSheet(force) {
     const j = await res.json();
     if (!j.ok || !Array.isArray(j.rows)) throw new Error(j.error || 'bad reply');
     if (!force && S.price != null) return;          // a bid started while we were loading
-    let sold = j.rows.filter(r => playerByName[r.player]).map(fromRow);
+    const bad = j.rows.map(r => ({ r, why: rowProblem(r) })).filter(x => x.why);
+    let sold = j.rows.filter(r => !rowProblem(r)).map(fromRow);
     const ids = new Set(sold.map(x => x.id));
     outbox.forEach(o => {                            // include changes not yet saved to the sheet
-      if (o.action === 'add' && !ids.has(o.rec.id) && playerByName[o.rec.player]) { sold.push(fromRow(o.rec)); ids.add(o.rec.id); }
+      if (o.action === 'add' && !ids.has(o.rec.id) && !rowProblem(o.rec)) { sold.push(fromRow(o.rec)); ids.add(o.rec.id); }
       if (o.action === 'delete') sold = sold.filter(x => x.id !== o.id);
     });
     if (force || soldKey(sold) !== soldKey(S.sold)) {
       S.sold = sold; history = []; render();
     }
     $('sheetInfo').textContent = 'Last loaded from sheet ' + new Date().toLocaleTimeString('en-IN');
+    $('sheetWarn').innerHTML = bad.length
+      ? '<b>' + bad.length + ' sheet row(s) not counted — fix in the sheet, then Reload:</b><br>' +
+        bad.map(x => `Lot ID <b>${x.r.id}</b> · "${x.r.player}" → ${x.why}`).join('<br>')
+      : '';
   } catch (e) {
     $('sheetInfo').textContent = 'Could not reach the Google Sheet — showing what this browser has.';
   } finally { sheetLoading = false; }
